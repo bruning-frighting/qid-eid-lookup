@@ -103,6 +103,8 @@ In the GUI, open **Category Lookup** and either:
 
 Do not use the combined form and a separate High Level value at the same time.
 
+![QRadar Category Lookup GUI](assets/GUI_HLC_LLC_Category.png)
+
 ## Start the GUI
 
 ```powershell
