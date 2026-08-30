@@ -1,1 +1,2 @@
 data/qid_eid.db filter=lfs diff=lfs merge=lfs -text
+data/raw/*.csv filter=lfs diff=lfs merge=lfs -text
