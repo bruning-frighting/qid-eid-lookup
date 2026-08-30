@@ -4,7 +4,7 @@ An offline CLI and desktop GUI for looking up IBM QRadar mappings in three ways:
 
 1. **QID lookup** — find EIDs from a QRadar QID.
 2. **EID lookup** — find QIDs from a vendor Event ID.
-3. **Category lookup** — find QID/EID mappings from a High Level and/or Low Level Category.
+3. **HLC.LLC Category lookup** — find QID/EID mappings from a High Level and/or Low Level Category.
 
 All lookups use a local SQLite database. No QRadar connection is required after the data is imported.
 
