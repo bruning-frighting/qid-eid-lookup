@@ -66,7 +66,21 @@ class QidLookupApp(tk.Tk):
         self.repo: Optional[MappingRepository] = None
         self.stats_text: Optional[tk.Text] = None
 
+        self.show_windows_var = tk.BooleanVar(value=True)
+        self.show_sysmon_var = tk.BooleanVar(value=True)
+        self.show_linux_var = tk.BooleanVar(value=True)
+        self.show_other_var = tk.BooleanVar(value=True)
+
+        def on_filter_change(*args):
+            self.event_generate("<<FilterChanged>>")
+            
+        self.show_windows_var.trace_add("write", on_filter_change)
+        self.show_sysmon_var.trace_add("write", on_filter_change)
+        self.show_linux_var.trace_add("write", on_filter_change)
+        self.show_other_var.trace_add("write", on_filter_change)
+
         self._build_db_bar()
+        self._build_filter_bar()
         self._build_notebook()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -130,6 +144,16 @@ class QidLookupApp(tk.Tk):
         if path:
             self._connect_db(path)
 
+    # -- top bar: log source filter ---------------------------------------
+
+    def _build_filter_bar(self) -> None:
+        bar = ttk.LabelFrame(self, text="Log Source Filters (áp dụng cho Lookup Output)")
+        bar.pack(fill="x", padx=8, pady=4)
+        ttk.Checkbutton(bar, text="Windows EVTX", variable=self.show_windows_var).pack(side="left", padx=10, pady=4)
+        ttk.Checkbutton(bar, text="Sysmon", variable=self.show_sysmon_var).pack(side="left", padx=10, pady=4)
+        ttk.Checkbutton(bar, text="Linux", variable=self.show_linux_var).pack(side="left", padx=10, pady=4)
+        ttk.Checkbutton(bar, text="Other (Các nguồn khác)", variable=self.show_other_var).pack(side="left", padx=10, pady=4)
+
     # -- notebook (tabs) ----------------------------------------------------
 
     def _build_notebook(self) -> None:
@@ -160,12 +184,68 @@ class QidLookupApp(tk.Tk):
         hsb.grid(row=1, column=0, sticky="ew")
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
+
+        def on_item_click(event) -> None:
+            selected = tree.selection()
+            if not selected:
+                return
+            item = tree.item(selected[0])
+            values = item.get("values")
+            if not values:
+                return
+            self._show_detail_popup(values)
+
+        tree.bind("<Double-1>", on_item_click)
         return frame, tree
 
-    @staticmethod
-    def _populate_table(tree: ttk.Treeview, mappings: list[Mapping]) -> None:
+    def _show_detail_popup(self, values: list) -> None:
+        popup = tk.Toplevel(self)
+        popup.title("Chi tiết Mapping")
+        popup.geometry("600x450")
+        popup.minsize(400, 300)
+        
+        frame = ttk.Frame(popup, padding=10)
+        frame.pack(fill="both", expand=True)
+
+        text_widget = tk.Text(frame, wrap="word", font=("Consolas", 10))
+        text_widget.pack(fill="both", expand=True, side="left")
+        
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=text_widget.yview)
+        vsb.pack(side="right", fill="y")
+        text_widget.configure(yscrollcommand=vsb.set)
+
+        content = []
+        for col, val in zip(_COLUMNS, values):
+            heading = _HEADINGS.get(col, col)
+            content.append(f"[{heading}]\n{val}\n")
+        
+        text_widget.insert("1.0", "\n".join(content))
+        text_widget.configure(state="disabled")
+        
+        popup.transient(self)
+        popup.grab_set()
+        popup.focus_set()
+
+    def _populate_table(self, tree: ttk.Treeview, mappings: list[Mapping]) -> None:
         tree.delete(*tree.get_children())
+        show_win = self.show_windows_var.get()
+        show_sysmon = self.show_sysmon_var.get()
+        show_linux = self.show_linux_var.get()
+        show_other = self.show_other_var.get()
+
         for m in mappings:
+            cat = (m.event_category or "").lower()
+            name = (m.event_name or "").lower()
+            
+            if "sysmon" in cat or "sysmon" in name:
+                if not show_sysmon: continue
+            elif "linux" in cat or "linux" in name:
+                if not show_linux: continue
+            elif "windows" in cat or "windows" in name:
+                if not show_win: continue
+            else:
+                if not show_other: continue
+
             tree.insert(
                 "",
                 "end",
@@ -233,6 +313,11 @@ class QidLookupApp(tk.Tk):
 
         status_var = tk.StringVar()
         state: dict = {"last_mappings": []}
+
+        def apply_filter(*args):
+            if state.get("last_mappings"):
+                self._populate_table(tree, state["last_mappings"])
+        self.bind("<<FilterChanged>>", apply_filter, add="+")
 
         def do_lookup() -> None:
             repo = self._require_repo()
@@ -312,6 +397,11 @@ class QidLookupApp(tk.Tk):
         result_frame, tree = self._build_results_table(frame)
         status_var = tk.StringVar()
         state: dict = {"last_mappings": []}
+
+        def apply_filter(*args):
+            if state.get("last_mappings"):
+                self._populate_table(tree, state["last_mappings"])
+        self.bind("<<FilterChanged>>", apply_filter, add="+")
 
         def do_lookup() -> None:
             repo = self._require_repo()
@@ -399,6 +489,11 @@ class QidLookupApp(tk.Tk):
         result_frame, tree = self._build_results_table(frame)
         status_var = tk.StringVar()
         state: dict = {"last_mappings": []}
+
+        def apply_filter(*args):
+            if state.get("last_mappings"):
+                self._populate_table(tree, state["last_mappings"])
+        self.bind("<<FilterChanged>>", apply_filter, add="+")
 
         def do_search() -> None:
             repo = self._require_repo()
