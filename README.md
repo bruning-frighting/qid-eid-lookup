@@ -165,17 +165,6 @@ qidlookup validate
 - `stats` shows database counts and missing data.
 - `validate` checks the SQLite schema, indexes, and integrity.
 
-## Troubleshooting
-
-| Problem | Solution |
-|---|---|
-| QID Lookup cannot find `7045` | Use EID Lookup; `7045` is a Windows Event ID. |
-| An EID returns several QIDs | Add a Device Type filter. |
-| Category Lookup returns nothing | Import a CSV with `high_level_category` and `low_level_category`. |
-| `qidlookup` is not recognized | Use `python -m qidlookup`. |
-| The wrong database is open | Check the GUI database path or use `--database PATH`. |
-| `data/qid_eid.db` is only a small text pointer | Install Git LFS and run `git lfs pull`. |
-
 ## Test
 
 ```powershell
