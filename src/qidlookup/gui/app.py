@@ -25,7 +25,6 @@ from qidlookup.importers.csv_importer import import_csv
 from qidlookup.utils.formatting import format_delimited, format_json
 from qidlookup.utils.validation import (
     InputValidationError,
-    parse_device_type_arg,
     parse_qid_arg,
     split_category_arg,
     validate_readable_file,
@@ -34,7 +33,6 @@ from qidlookup.utils.validation import (
 _COLUMNS = (
     "qid",
     "eid",
-    "devicetypeid",
     "event_category",
     "severity",
     "high_level_category",
@@ -45,7 +43,6 @@ _COLUMNS = (
 _HEADINGS = {
     "qid": "QID",
     "eid": "EID",
-    "devicetypeid": "Device Type",
     "event_category": "Category",
     "severity": "Severity",
     "high_level_category": "High Level Cat.",
@@ -53,7 +50,7 @@ _HEADINGS = {
     "event_name": "Event Name",
     "description": "Description",
 }
-_WIDTHS = {"qid": 90, "eid": 90, "devicetypeid": 90, "severity": 60}
+_WIDTHS = {"qid": 90, "eid": 90, "severity": 60}
 
 
 class QidLookupApp(tk.Tk):
@@ -174,7 +171,6 @@ class QidLookupApp(tk.Tk):
                 values=(
                     "" if m.qid is None else m.qid,
                     m.eid or "",
-                    "" if m.devicetypeid is None else m.devicetypeid,
                     m.event_category or "",
                     "" if m.severity is None else m.severity,
                     m.high_level_category or "",
@@ -232,12 +228,6 @@ class QidLookupApp(tk.Tk):
         text_input = tk.Text(top, height=4, width=90)
         text_input.pack(fill="x", pady=4)
 
-        opts = ttk.Frame(top)
-        opts.pack(fill="x", pady=2)
-        ttk.Label(opts, text="Device Type (tùy chọn):").pack(side="left")
-        device_var = tk.StringVar()
-        ttk.Entry(opts, textvariable=device_var, width=10).pack(side="left", padx=4)
-
         result_frame, tree = self._build_results_table(frame)
 
         status_var = tk.StringVar()
@@ -255,14 +245,11 @@ class QidLookupApp(tk.Tk):
                 return
 
             try:
-                device_type = (
-                    parse_device_type_arg(device_var.get()) if device_var.get().strip() else None
-                )
                 if is_qid:
                     parsed = [parse_qid_arg(v) for v in raw_values]
-                    results = LookupService(repo).lookup_qids(parsed, device_type=device_type)
+                    results = LookupService(repo).lookup_qids(parsed)
                 else:
-                    results = LookupService(repo).lookup_eids(raw_values, device_type=device_type)
+                    results = LookupService(repo).lookup_eids(raw_values)
             except InputValidationError as exc:
                 messagebox.showerror("Input Error", str(exc))
                 return
@@ -309,7 +296,7 @@ class QidLookupApp(tk.Tk):
         ttk.Label(
             top,
             text="Tra QID/EID theo QRadar Category (khớp chính xác). Có thể gõ "
-            "\"System.Process Creation Success\" vào ô Low Level, tool tự tách High/Low:",
+            "\"Audit.Command Execution Success\" vào ô Low Level, tool tự tách High/Low:",
         ).pack(anchor="w")
 
         opts = ttk.Frame(top)
@@ -321,10 +308,6 @@ class QidLookupApp(tk.Tk):
         ttk.Label(opts, text="High Level Category (tùy chọn):").pack(side="left", padx=(12, 0))
         hlc_var = tk.StringVar()
         ttk.Entry(opts, textvariable=hlc_var, width=24).pack(side="left", padx=4)
-        ttk.Label(opts, text="Device Type:").pack(side="left", padx=(12, 0))
-        device_var = tk.StringVar()
-        ttk.Entry(opts, textvariable=device_var, width=10).pack(side="left", padx=4)
-
         result_frame, tree = self._build_results_table(frame)
         status_var = tk.StringVar()
         state: dict = {"last_mappings": []}
@@ -346,16 +329,8 @@ class QidLookupApp(tk.Tk):
                 )
                 return
 
-            try:
-                device_type = (
-                    parse_device_type_arg(device_var.get()) if device_var.get().strip() else None
-                )
-            except InputValidationError as exc:
-                messagebox.showerror("Input Error", str(exc))
-                return
-
             results = LookupService(repo).lookup_by_category(
-                low_level_category=llc, high_level_category=hlc, device_type=device_type
+                low_level_category=llc, high_level_category=hlc
             )
             self._populate_table(tree, results)
             state["last_mappings"] = results
@@ -404,10 +379,7 @@ class QidLookupApp(tk.Tk):
 
         opts = ttk.Frame(top)
         opts.pack(fill="x", pady=2)
-        ttk.Label(opts, text="Device Type:").pack(side="left")
-        device_var = tk.StringVar()
-        ttk.Entry(opts, textvariable=device_var, width=10).pack(side="left", padx=4)
-        ttk.Label(opts, text="Category:").pack(side="left", padx=(12, 0))
+        ttk.Label(opts, text="Category:").pack(side="left")
         category_var = tk.StringVar()
         ttk.Entry(opts, textvariable=category_var, width=18).pack(side="left", padx=4)
         ttk.Label(opts, text="Limit:").pack(side="left", padx=(12, 0))
@@ -438,11 +410,8 @@ class QidLookupApp(tk.Tk):
                 return
 
             try:
-                device_type = (
-                    parse_device_type_arg(device_var.get()) if device_var.get().strip() else None
-                )
                 limit = int(limit_var.get()) if limit_var.get().strip() else 100
-            except (InputValidationError, ValueError) as exc:
+            except ValueError as exc:
                 messagebox.showerror("Input Error", str(exc))
                 return
 
@@ -451,7 +420,6 @@ class QidLookupApp(tk.Tk):
             low_level_category = llc_var.get().strip() or None
             results = SearchService(repo).search(
                 term,
-                device_type=device_type,
                 category=category,
                 low_level_category=low_level_category,
                 high_level_category=high_level_category,
@@ -590,7 +558,6 @@ class QidLookupApp(tk.Tk):
             f"Total mappings : {stats.total_mappings}\n"
             f"Unique QIDs    : {stats.unique_qids}\n"
             f"Unique EIDs    : {stats.unique_eids}\n"
-            f"Device Types   : {stats.device_types}\n"
             f"Categories     : {stats.categories}\n\n"
             f"NULL QID       : {stats.null_qid}\n"
             f"NULL EID       : {stats.null_eid}\n"

@@ -6,7 +6,6 @@ import pytest
 
 from qidlookup.utils.validation import (
     InputValidationError,
-    parse_device_type_arg,
     parse_qid_arg,
     split_category_arg,
     split_csv_arg,
@@ -20,11 +19,6 @@ def test_parse_qid_arg_valid():
 def test_parse_qid_arg_invalid_raises():
     with pytest.raises(InputValidationError, match="QID must be an integer"):
         parse_qid_arg("not-a-number")
-
-
-def test_parse_device_type_arg_invalid_raises():
-    with pytest.raises(InputValidationError, match="Device type must be an integer"):
-        parse_device_type_arg("abc")
 
 
 def test_split_csv_arg_trims_and_drops_empty():

@@ -49,6 +49,20 @@ def test_import_without_llc_hlc_columns_defaults_to_none(db_path):
         assert mapping.high_level_category is None
 
 
+def test_import_without_device_type_column(db_path, tmp_path):
+    csv_path = _write_csv(
+        tmp_path / "no_device_type.csv",
+        "eid,event_category,qid,event_name,description\n"
+        "7045,System,5001613,A service was installed,desc\n",
+    )
+    result = import_csv(csv_path, db_path)
+    assert result.imported == 1
+
+    with get_connection(db_path) as conn:
+        mapping = MappingRepository(conn).find_by_qid(5001613)[0]
+        assert mapping.devicetypeid is None
+
+
 def test_import_valid_csv(db_path):
     result = import_csv(SAMPLE_CSV, db_path)
     assert result.input_rows == 4

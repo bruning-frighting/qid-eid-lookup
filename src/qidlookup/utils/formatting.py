@@ -72,7 +72,7 @@ def format_table(rows: Sequence[dict[str, str]], columns: Sequence[tuple[str, st
 
 
 def format_json(mappings: Sequence[Mapping]) -> str:
-    return json.dumps([m.to_dict() for m in mappings], indent=2)
+    return json.dumps([_public_mapping_dict(m) for m in mappings], indent=2)
 
 
 def format_delimited(mappings: Sequence[Mapping], delimiter: str) -> str:
@@ -80,7 +80,6 @@ def format_delimited(mappings: Sequence[Mapping], delimiter: str) -> str:
     fieldnames = [
         "qid",
         "eid",
-        "devicetypeid",
         "event_category",
         "event_name",
         "description",
@@ -91,8 +90,15 @@ def format_delimited(mappings: Sequence[Mapping], delimiter: str) -> str:
     writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=delimiter, lineterminator="\n")
     writer.writeheader()
     for mapping in mappings:
-        writer.writerow(mapping.to_dict())
+        writer.writerow(_public_mapping_dict(mapping))
     return output.getvalue()
+
+
+def _public_mapping_dict(mapping: Mapping) -> dict:
+    """Return fields exposed by lookup results, hiding internal source metadata."""
+    data = mapping.to_dict()
+    data.pop("devicetypeid", None)
+    return data
 
 
 def _stringify(value: object) -> str:

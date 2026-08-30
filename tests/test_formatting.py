@@ -40,13 +40,14 @@ def test_format_json_roundtrip():
     data = json.loads(text)
     assert data[0]["qid"] == 5000849
     assert data[0]["eid"] == "4662"
+    assert "devicetypeid" not in data[0]
 
 
 def test_format_delimited_csv():
     text = format_delimited([MAPPING], ",")
     lines = text.strip().splitlines()
     assert lines[0] == (
-        "qid,eid,devicetypeid,event_category,event_name,description,"
+        "qid,eid,event_category,event_name,description,"
         "severity,high_level_category,low_level_category"
     )
     assert "5000849" in lines[1]

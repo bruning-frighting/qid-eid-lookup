@@ -28,7 +28,7 @@ The repository includes a ready-to-use default database at `data/qid_eid.db`. It
 
 ```powershell
 qidlookup stats
-qidlookup eid 7045 --device-type 12
+qidlookup eid 7045
 ```
 
 If you have a custom QRadar CSV, replace the default database with:
@@ -47,7 +47,6 @@ Use this mode when you already know the **QRadar QID**.
 
 ```powershell
 qidlookup qid 5000849
-qidlookup qid 5000849 --device-type 12
 qidlookup qid 5000843 5000849 5000850
 ```
 
@@ -60,14 +59,13 @@ Use this mode for a Windows Event ID or another vendor **Event ID**.
 ```powershell
 qidlookup eid 4662
 qidlookup eid 7045
-qidlookup eid 7045 --device-type 12
 ```
 
 In the GUI, open **EID Lookup**, enter one or more Event IDs, and click **Lookup EID**.
 
-> Windows Event ID `7045` is an **EID**, not a QID. In the current full dataset, filtering EID `7045` by Device Type `12` returns QID `5001613` (`A service was installed in a system`).
+> Windows Event ID `7045` is an **EID**, not a QID. Enter it in EID Lookup, not QID Lookup.
 
-The same QID or EID may have multiple mappings. Use `--device-type` or the GUI's **Device Type** field to narrow the results.
+The same QID or EID may have multiple mappings, so the tool returns every match.
 
 ## 3. Category lookup
 
@@ -142,7 +140,7 @@ qidlookup eid-list eids.txt
 Required columns:
 
 ```text
-devicetypeid,eid,event_category,qid,event_name,description
+eid,event_category,qid,event_name,description
 ```
 
 Optional columns:

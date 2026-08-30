@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 REQUIRED_CSV_COLUMNS = {
-    "devicetypeid",
     "eid",
     "event_category",
     "qid",
@@ -72,14 +71,6 @@ def parse_qid_arg(value: str) -> int:
         return int(value.strip())
     except (ValueError, AttributeError) as exc:
         raise InputValidationError("QID must be an integer.") from exc
-
-
-def parse_device_type_arg(value: str) -> int:
-    """Parse a device-type CLI argument, raising a user-friendly error."""
-    try:
-        return int(value.strip())
-    except (ValueError, AttributeError) as exc:
-        raise InputValidationError("Device type must be an integer.") from exc
 
 
 def split_csv_arg(value: str) -> list[str]:

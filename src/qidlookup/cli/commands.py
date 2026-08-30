@@ -34,7 +34,6 @@ from qidlookup.importers.csv_importer import import_csv
 from qidlookup.utils.formatting import format_delimited, format_json, format_table
 from qidlookup.utils.validation import (
     InputValidationError,
-    parse_device_type_arg,
     parse_qid_arg,
     split_category_arg,
     split_csv_arg,
@@ -147,12 +146,8 @@ def _read_ids_from_file(path: Path) -> list[str]:
     return [line.strip() for line in lines if line.strip()]
 
 
-def _resolve_output_and_devicetype(
-    output: Optional[Path], force: bool, device_type: Optional[str]
-) -> tuple[Optional[Path], Optional[int]]:
-    out_path = validate_output_path(output, force) if output else None
-    device_type_id = parse_device_type_arg(device_type) if device_type else None
-    return out_path, device_type_id
+def _resolve_output(output: Optional[Path], force: bool) -> Optional[Path]:
+    return validate_output_path(output, force) if output else None
 
 
 # -- human-readable table renderers -----------------------------------------
@@ -170,7 +165,6 @@ def _human_qid_single(qid: int, mappings: list[Mapping]) -> str:
     rows = [
         {
             "eid": m.eid or "",
-            "devicetypeid": "" if m.devicetypeid is None else m.devicetypeid,
             "event_category": m.event_category or "",
             "high_level_category": m.high_level_category or "",
             "low_level_category": m.low_level_category or "",
@@ -180,7 +174,6 @@ def _human_qid_single(qid: int, mappings: list[Mapping]) -> str:
     ]
     columns = [
         ("EID", "eid"),
-        ("Device Type", "devicetypeid"),
         ("Category", "event_category"),
         ("High Level Cat.", "high_level_category"),
         ("Low Level Cat.", "low_level_category"),
@@ -202,7 +195,6 @@ def _human_eid_single(eid: str, mappings: list[Mapping]) -> str:
     rows = [
         {
             "qid": "" if m.qid is None else m.qid,
-            "devicetypeid": "" if m.devicetypeid is None else m.devicetypeid,
             "event_category": m.event_category or "",
             "high_level_category": m.high_level_category or "",
             "low_level_category": m.low_level_category or "",
@@ -212,7 +204,6 @@ def _human_eid_single(eid: str, mappings: list[Mapping]) -> str:
     ]
     columns = [
         ("QID", "qid"),
-        ("Device Type", "devicetypeid"),
         ("Category", "event_category"),
         ("High Level Cat.", "high_level_category"),
         ("Low Level Cat.", "low_level_category"),
@@ -339,7 +330,6 @@ def _human_category_result(
         {
             "qid": "" if m.qid is None else m.qid,
             "eid": m.eid or "",
-            "devicetypeid": "" if m.devicetypeid is None else m.devicetypeid,
             "event_name": m.event_name or "",
         }
         for m in mappings
@@ -347,7 +337,6 @@ def _human_category_result(
     columns = [
         ("QID", "qid"),
         ("EID", "eid"),
-        ("Device Type", "devicetypeid"),
         ("Event Name", "event_name"),
     ]
     lines.append(format_table(rows, columns))
@@ -360,7 +349,6 @@ def _human_category_result(
 def _handle_qid_lookup(
     ctx: typer.Context,
     raw_values: list[str],
-    device_type: Optional[str],
     fmt: str,
     output: Optional[Path],
     force: bool,
@@ -372,13 +360,13 @@ def _handle_qid_lookup(
 
     try:
         parsed_qids = [parse_qid_arg(v) for v in raw_values]
-        out_path, device_type_id = _resolve_output_and_devicetype(output, force, device_type)
+        out_path = _resolve_output(output, force)
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
 
     with _repo_session(state.settings) as repo:
-        results = LookupService(repo).lookup_qids(parsed_qids, device_type=device_type_id)
+        results = LookupService(repo).lookup_qids(parsed_qids)
 
     found_all = all(bool(ms) for ms in results.values())
     flat_mappings = [m for ms in results.values() for m in ms]
@@ -396,7 +384,6 @@ def _handle_qid_lookup(
 def _handle_eid_lookup(
     ctx: typer.Context,
     raw_values: list[str],
-    device_type: Optional[str],
     fmt: str,
     output: Optional[Path],
     force: bool,
@@ -409,13 +396,13 @@ def _handle_eid_lookup(
     cleaned_eids = [v.strip() for v in raw_values if v.strip()]
 
     try:
-        out_path, device_type_id = _resolve_output_and_devicetype(output, force, device_type)
+        out_path = _resolve_output(output, force)
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
 
     with _repo_session(state.settings) as repo:
-        results = LookupService(repo).lookup_eids(cleaned_eids, device_type=device_type_id)
+        results = LookupService(repo).lookup_eids(cleaned_eids)
 
     found_all = all(bool(ms) for ms in results.values())
     flat_mappings = [m for ms in results.values() for m in ms]
@@ -475,7 +462,6 @@ def qid_cmd(
     ctx: typer.Context,
     qids: Optional[List[str]] = typer.Argument(None, help="One or more QIDs to look up."),
     qids_opt: Optional[str] = typer.Option(None, "--qids", help="Comma-separated list of QIDs."),
-    device_type: Optional[str] = typer.Option(None, "--device-type", help="Filter by device type ID."),
     fmt: str = typer.Option("human", "--format", "-f", help="Output format: human, json, csv, tsv."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write result to a file."),
     force: bool = typer.Option(False, "--force", help="Overwrite --output file if it already exists."),
@@ -484,7 +470,7 @@ def qid_cmd(
     raw_values = list(qids or [])
     if qids_opt:
         raw_values.extend(split_csv_arg(qids_opt))
-    _handle_qid_lookup(ctx, raw_values, device_type, fmt, output, force)
+    _handle_qid_lookup(ctx, raw_values, fmt, output, force)
 
 
 @app.command("eid")
@@ -492,7 +478,6 @@ def eid_cmd(
     ctx: typer.Context,
     eids: Optional[List[str]] = typer.Argument(None, help="One or more EIDs to look up."),
     eids_opt: Optional[str] = typer.Option(None, "--eids", help="Comma-separated list of EIDs."),
-    device_type: Optional[str] = typer.Option(None, "--device-type", help="Filter by device type ID."),
     fmt: str = typer.Option("human", "--format", "-f", help="Output format: human, json, csv, tsv."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write result to a file."),
     force: bool = typer.Option(False, "--force", help="Overwrite --output file if it already exists."),
@@ -501,14 +486,13 @@ def eid_cmd(
     raw_values = list(eids or [])
     if eids_opt:
         raw_values.extend(split_csv_arg(eids_opt))
-    _handle_eid_lookup(ctx, raw_values, device_type, fmt, output, force)
+    _handle_eid_lookup(ctx, raw_values, fmt, output, force)
 
 
 @app.command("qid-list")
 def qid_list_cmd(
     ctx: typer.Context,
     file: Path = typer.Argument(..., help="Text file with one QID per line."),
-    device_type: Optional[str] = typer.Option(None, "--device-type"),
     fmt: str = typer.Option("human", "--format", "-f"),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
     force: bool = typer.Option(False, "--force"),
@@ -519,14 +503,13 @@ def qid_list_cmd(
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
-    _handle_qid_lookup(ctx, raw_values, device_type, fmt, output, force)
+    _handle_qid_lookup(ctx, raw_values, fmt, output, force)
 
 
 @app.command("eid-list")
 def eid_list_cmd(
     ctx: typer.Context,
     file: Path = typer.Argument(..., help="Text file with one EID per line."),
-    device_type: Optional[str] = typer.Option(None, "--device-type"),
     fmt: str = typer.Option("human", "--format", "-f"),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
     force: bool = typer.Option(False, "--force"),
@@ -537,14 +520,13 @@ def eid_list_cmd(
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
-    _handle_eid_lookup(ctx, raw_values, device_type, fmt, output, force)
+    _handle_eid_lookup(ctx, raw_values, fmt, output, force)
 
 
 @app.command("reverse")
 def reverse_cmd(
     ctx: typer.Context,
     file: Path = typer.Argument(..., help="Text file with one QID per line."),
-    device_type: Optional[str] = typer.Option(None, "--device-type"),
     fmt: str = typer.Option("human", "--format", "-f"),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
     force: bool = typer.Option(False, "--force"),
@@ -555,14 +537,13 @@ def reverse_cmd(
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
-    _handle_qid_lookup(ctx, raw_values, device_type, fmt, output, force)
+    _handle_qid_lookup(ctx, raw_values, fmt, output, force)
 
 
 @app.command("reverse-eid")
 def reverse_eid_cmd(
     ctx: typer.Context,
     file: Path = typer.Argument(..., help="Text file with one EID per line."),
-    device_type: Optional[str] = typer.Option(None, "--device-type"),
     fmt: str = typer.Option("human", "--format", "-f"),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
     force: bool = typer.Option(False, "--force"),
@@ -573,7 +554,7 @@ def reverse_eid_cmd(
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
-    _handle_eid_lookup(ctx, raw_values, device_type, fmt, output, force)
+    _handle_eid_lookup(ctx, raw_values, fmt, output, force)
 
 
 @app.command("search")
@@ -582,7 +563,6 @@ def search_cmd(
     term: str = typer.Argument(..., help="Text to search for in name/description/category."),
     limit: int = typer.Option(DEFAULT_SEARCH_LIMIT, "--limit", help="Maximum number of results."),
     offset: int = typer.Option(0, "--offset", help="Number of results to skip (pagination)."),
-    device_type: Optional[str] = typer.Option(None, "--device-type", help="Filter by device type ID."),
     category: Optional[str] = typer.Option(
         None, "--category", help="Filter by exact raw event category (per log source)."
     ),
@@ -599,7 +579,7 @@ def search_cmd(
     """Search event name/description/category (incl. Low/High Level Category) for a text fragment."""
     state: AppState = ctx.obj
     try:
-        out_path, device_type_id = _resolve_output_and_devicetype(output, force, device_type)
+        out_path = _resolve_output(output, force)
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
@@ -607,7 +587,6 @@ def search_cmd(
     with _repo_session(state.settings) as repo:
         mappings = SearchService(repo).search(
             term,
-            device_type=device_type_id,
             category=category,
             low_level_category=low_level_category,
             high_level_category=high_level_category,
@@ -625,13 +604,12 @@ def category_cmd(
     ctx: typer.Context,
     low_level_category: Optional[str] = typer.Argument(
         None,
-        help="Low Level Category, e.g. 'Process Creation Success', or the combined "
-        "QRadar-style 'High Level.Low Level' form, e.g. 'System.Process Creation Success'.",
+        help="Low Level Category, e.g. 'Command Execution Success', or the combined "
+        "QRadar-style 'High Level.Low Level' form, e.g. 'Audit.Command Execution Success'.",
     ),
     high_level_category: Optional[str] = typer.Option(
-        None, "--hlc", "--high-level-category", help="QRadar High Level Category, e.g. 'System'."
+        None, "--hlc", "--high-level-category", help="QRadar High Level Category, e.g. 'Audit'."
     ),
-    device_type: Optional[str] = typer.Option(None, "--device-type", help="Filter by device type ID."),
     fmt: str = typer.Option("human", "--format", "-f", help="Output format: human, json, csv, tsv."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write result to a file."),
     force: bool = typer.Option(False, "--force", help="Overwrite --output file if it already exists."),
@@ -639,12 +617,10 @@ def category_cmd(
     """Look up QID/EID mappings by exact QRadar Low and/or High Level Category.
 
     The same Low Level Category name can exist under different High Level
-    Categories (e.g. "Command Execution Success" appears under both
-    "Audit" (Linux) and "System" (Windows)) -- pass `--hlc` or the combined
-    "High Level.Low Level" form to disambiguate:
+    Categories. Pass `--hlc` or the combined "High Level.Low Level" form
+    to disambiguate:
 
-        qidlookup category "Process Creation Success" --hlc System
-        qidlookup category "System.Process Creation Success"
+        qidlookup category "Command Execution Success" --hlc Audit
         qidlookup category "Audit.Command Execution Success"
 
     Exact match, not substring -- use `search --llc/--hlc` for fuzzy matching.
@@ -661,7 +637,7 @@ def category_cmd(
             low_level_category = auto_llc
 
     try:
-        out_path, device_type_id = _resolve_output_and_devicetype(output, force, device_type)
+        out_path = _resolve_output(output, force)
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
@@ -670,7 +646,6 @@ def category_cmd(
         mappings = LookupService(repo).lookup_by_category(
             low_level_category=low_level_category,
             high_level_category=high_level_category,
-            device_type=device_type_id,
         )
 
     human_fn = lambda ms: _human_category_result(  # noqa: E731
@@ -692,7 +667,9 @@ def stats_cmd(
         stats = repo.get_stats()
 
     if fmt.lower() == "json":
-        typer.echo(json.dumps(dataclasses.asdict(stats), indent=2))
+        data = dataclasses.asdict(stats)
+        data.pop("device_types", None)
+        typer.echo(json.dumps(data, indent=2))
     else:
         typer.echo("Database Statistics")
         typer.echo("-" * 28)
@@ -700,7 +677,6 @@ def stats_cmd(
         typer.echo(f"Total mappings : {stats.total_mappings}")
         typer.echo(f"Unique QIDs    : {stats.unique_qids}")
         typer.echo(f"Unique EIDs    : {stats.unique_eids}")
-        typer.echo(f"Device Types   : {stats.device_types}")
         typer.echo(f"Categories     : {stats.categories}")
         typer.echo("")
         typer.echo(f"NULL QID       : {stats.null_qid}")
@@ -744,14 +720,12 @@ def validate_cmd(ctx: typer.Context) -> None:
 def export_cmd(
     ctx: typer.Context,
     output: Path = typer.Argument(..., help="Output file path (.csv, .tsv, or .json)."),
-    device_type: Optional[str] = typer.Option(None, "--device-type", help="Filter by device type ID."),
     force: bool = typer.Option(False, "--force", help="Overwrite the output file if it already exists."),
 ) -> None:
     """Export the full mapping database (or a filtered subset) to a file."""
     state: AppState = ctx.obj
     try:
         out_path = validate_output_path(output, force)
-        device_type_id = parse_device_type_arg(device_type) if device_type else None
     except InputValidationError as exc:
         _echo_error(str(exc))
         raise typer.Exit(code=EXIT_INVALID_INPUT) from exc
@@ -759,11 +733,11 @@ def export_cmd(
     suffix = out_path.suffix.lower()
     with _repo_session(state.settings) as repo:
         if suffix == ".json":
-            count = export_json(repo, out_path, device_type=device_type_id)
+            count = export_json(repo, out_path)
         elif suffix == ".tsv":
-            count = export_delimited(repo, out_path, delimiter="\t", device_type=device_type_id)
+            count = export_delimited(repo, out_path, delimiter="\t")
         elif suffix in (".csv", ""):
-            count = export_delimited(repo, out_path, delimiter=",", device_type=device_type_id)
+            count = export_delimited(repo, out_path, delimiter=",")
         else:
             _echo_error(f"Unsupported export extension: {suffix} (use .csv, .tsv, or .json)")
             raise typer.Exit(code=EXIT_INVALID_INPUT)

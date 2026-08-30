@@ -36,6 +36,13 @@ def test_cli_help():
     assert "search" in result.output
 
 
+def test_cli_lookup_help_has_no_device_type_filter():
+    for command in ("qid", "eid", "category", "search", "export"):
+        result = runner.invoke(app, [command, "--help"])
+        assert result.exit_code == 0
+        assert "device-type" not in result.output.lower()
+
+
 def test_cli_import(db_path):
     result = _import_sample(db_path)
     assert "Imported   : 4" in result.output
@@ -46,6 +53,7 @@ def test_cli_qid_single_found(db_path):
     result = runner.invoke(app, ["--database", str(db_path), "qid", "5000849"])
     assert result.exit_code == 0
     assert "4662" in result.output
+    assert "Device Type" not in result.output
 
 
 def test_cli_eid_single_found(db_path):
