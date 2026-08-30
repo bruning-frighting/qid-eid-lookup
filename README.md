@@ -1,516 +1,355 @@
 # QID ↔ EID Lookup Tool
 
-An offline, production-quality CLI (and optional desktop GUI) for looking up
-mappings between **QRadar QIDs**, vendor event IDs (e.g. **Windows Event
-IDs**), and QRadar's **High/Low Level Category** taxonomy — backed by a
-local SQLite database built from a QRadar CSV export. No network access or
-QRadar connection is required at query time.
+Công cụ tra cứu offline cho dữ liệu mapping của IBM QRadar. Tool hỗ trợ cả dòng lệnh (CLI) và giao diện desktop (GUI), với ba chế độ tra cứu chính:
 
-## 1. Project purpose
+1. **QID lookup**: biết QRadar QID, tìm EID và thông tin event tương ứng.
+2. **EID lookup**: biết vendor Event ID, tìm QID tương ứng.
+3. **High Level/Low Level Category lookup**: tìm toàn bộ QID/EID thuộc một QRadar category.
 
-QRadar exports QID ↔ EID mapping tables that analysts need to cross-reference
-constantly during detection engineering and incident response — "what QID
-does Windows EID 4688 map to?", "what EIDs feed QID 5000849?", "which QIDs
-fall under System.Process Creation Success?". This tool turns a raw CSV
-export into a fast, indexed, offline-queryable SQLite database with a
-scriptable CLI and a desktop GUI, so lookup no longer requires opening
-QRadar or grepping a spreadsheet.
+Mọi truy vấn chạy trên SQLite cục bộ. Sau khi import dữ liệu, tool không cần kết nối Internet hoặc QRadar.
 
-Key properties:
+## Chọn đúng chế độ lookup
 
-- **Offline** — works entirely from a local `.db` file.
-- **1:many aware** — a QID can map to multiple EIDs (and vice versa) across
-  device types/categories; no mapping is ever silently collapsed or lost.
-- **Category-aware** — looks up by QRadar High/Low Level Category, not just
-  QID/EID, and correctly disambiguates identically-named Low Level
-  Categories that live under different High Level Categories (e.g.
-  "Command Execution Success" exists under both `Audit` (Linux) and
-  `System` (Windows)).
-- **Batch-first** — single lookups, multi-value lookups, and file-based
-  lookups all use the same underlying engine.
-- **Scriptable** — human, JSON, CSV, and TSV output, proper exit codes.
-- **Two front-ends, one engine** — the CLI and the Tkinter desktop GUI are
-  both thin presentation layers over the same `core`/`database` code, so
-  results are always identical between them.
+| Thông tin đang có | Chế độ cần dùng | Ví dụ |
+|---|---|---|
+| QRadar QID | QID Lookup | `5000849` |
+| Windows Event ID hoặc vendor Event ID | EID Lookup | `7045`, `4688`, `4662` |
+| Low Level Category, có thể kèm High Level Category | Category Lookup | `Audit.Command Execution Success` |
 
-## 2. Architecture
+> [!IMPORTANT]
+> Windows Event ID `7045` là **EID**, không phải QID. Hãy nhập nó trong tab **EID Lookup**. Trong dataset hiện tại, EID `7045` có nhiều mapping; mapping Windows với Device Type `12` trỏ tới QID `5001613` (`A service was installed in a system`).
 
-Strict layering, enforced by import direction — the CLI/GUI never touch SQL,
-and the database layer never imports either front-end:
+QID và EID không phải quan hệ một-một. Một QID/EID có thể xuất hiện trong nhiều Device Type, vì vậy tool luôn trả về tất cả mapping phù hợp.
 
-```
-CSV file
-   │
-   ▼
-importers/csv_importer.py      (validates + streams rows)
-   │
-   ▼
-database/repository.py         (parameterized SQL only)
-   │
-   ▼
-SQLite (data/qid_eid.db)
-   │
-   ▼
-core/lookup.py, core/search.py (business logic, format-agnostic)
-   │
-   ▼
-exporters/csv_exporter.py      (streaming CSV/TSV/JSON export)
-   │
-   ├──────────────────────┬─────────────────────┐
-   ▼                      ▼
-cli/commands.py       gui/app.py            utils/formatting.py
-(Typer CLI)           (Tkinter desktop)      (human table / JSON / CSV / TSV)
-```
+## Tính năng
 
-- **`core/`** contains all business logic and is storage-agnostic — it talks
-  to `database/repository.py`, never to `sqlite3` directly. Swapping SQLite
-  for PostgreSQL later means rewriting `database/connection.py` and
-  `database/repository.py` only.
-- **`database/`** is the only place SQL lives. All queries are parameterized.
-- **`importers/`** and **`exporters/`** stream row-by-row; nothing loads a
-  multi-million-row dataset fully into memory.
-- **`cli/`** and **`gui/`** own argument parsing, exit codes/dialogs, and
-  output formatting only — no lookup/search/import logic lives in either.
+- Tra cứu một hoặc nhiều QID/EID.
+- Lọc theo Device Type khi một ID có nhiều mapping.
+- Tra cứu chính xác theo High Level Category và/hoặc Low Level Category.
+- Tìm kiếm theo từ khóa trong event name, description và category.
+- Xuất kết quả ra JSON, CSV hoặc TSV.
+- Import CSV theo kiểu thêm dữ liệu hoặc thay thế database an toàn bằng `--replace`.
+- Cùng một lookup engine cho CLI và GUI nên kết quả hai chế độ là như nhau.
 
-### Project tree
+## Cài đặt
 
-```
-qid-eid-lookup/
-├── README.md
-├── LICENSE
-├── pyproject.toml
-├── requirements.txt
-├── .gitignore
-├── data/
-│   ├── raw/qid_eid_mapping.csv     # sample QRadar-style export
-│   └── qid_eid.db                  # built SQLite database (generated)
-├── src/qidlookup/
-│   ├── __main__.py                 # `python -m qidlookup` entry point
-│   ├── cli/commands.py             # Typer CLI
-│   ├── gui/app.py                  # Tkinter desktop GUI
-│   ├── core/{models,lookup,search}.py
-│   ├── database/{connection,schema,repository}.py
-│   ├── importers/csv_importer.py
-│   ├── exporters/csv_exporter.py
-│   ├── config/settings.py
-│   └── utils/{validation,formatting}.py
-├── tests/
-│   ├── test_importer.py, test_lookup.py, test_search.py,
-│   │   test_repository.py, test_exporters.py, test_formatting.py,
-│   │   test_validation.py, test_cli.py
-│   ├── conftest.py
-│   └── fixtures/sample_mapping.csv
-└── scripts/
-    ├── import_csv.py
-    └── build_database.py
-```
+Yêu cầu Python 3.9 trở lên.
 
-## 3. Installation
-
-Requires Python 3.9+.
-
-```bash
+```powershell
+git clone https://github.com/bruning-frighting/qid-eid-lookup.git
 cd qid-eid-lookup
-pip install .
+python -m pip install .
+```
+
+Kiểm tra cài đặt:
+
+```powershell
 qidlookup --help
 ```
 
-For development (editable install + test dependencies):
+Nếu PowerShell không tìm thấy lệnh `qidlookup`, dùng:
 
-```bash
-pip install -e ".[dev]"
+```powershell
+python -m qidlookup --help
 ```
 
-## 4. Import CSV
+## Chuẩn bị database
 
-```bash
-qidlookup import data/raw/qid_eid_mapping.csv
-```
+File `data/qid_eid.db` không được lưu trên GitHub vì database thật có dung lượng lớn. Sau khi clone repo, cần import CSV trước khi lookup.
 
-```
-Import completed.
+### Chạy thử với CSV mẫu
 
-Input rows : 9
-Imported   : 9
-Skipped    : 0
-Invalid    : 0
-Duplicated : 0
-Database   : data/qid_eid.db
-```
+Repo có file `data/raw/qid_eid_mapping.csv` gồm một số mapping mẫu:
 
-Rebuild the database from scratch (safe, atomic — the old database is
-untouched if the import fails partway through):
-
-```bash
+```powershell
 qidlookup import data/raw/qid_eid_mapping.csv --replace
 ```
 
-The CSV needs at least the 6 base columns (`devicetypeid,eid,event_category,
-qid,event_name,description`); `severity`, `high_level_category`, and
-`low_level_category` are optional and enable the category lookups in
-section 8 — see section 11 for how to get those columns out of QRadar.
+CSV mẫu chỉ có 6 cột cơ bản, vì vậy dùng được cho QID/EID lookup nhưng **không có dữ liệu High/Low Level Category**.
 
-## 5. QID lookup
+### Import dataset đầy đủ
 
-```bash
+```powershell
+qidlookup import path/to/qid_eid_full_mapping.csv --replace
+```
+
+Thứ tự tìm database:
+
+1. `--database PATH`
+2. Biến môi trường `QIDLOOKUP_DATABASE`
+3. `data/qid_eid.db`
+
+Ví dụ dùng database ở vị trí khác:
+
+```powershell
+qidlookup --database D:\QRadar\qid_eid.db eid 7045
+```
+
+## 1. QID Lookup
+
+Dùng chế độ này khi giá trị đầu vào là **QRadar QID**. Kết quả cho biết EID, Device Type, category và tên event tương ứng.
+
+### CLI
+
+Tra một QID:
+
+```powershell
 qidlookup qid 5000849
 ```
 
-```
-QID: 5000849
+Với CSV mẫu, QID `5000849` trả về hai mapping cùng EID `4662`, nhưng thuộc hai Device Type khác nhau.
 
-EID    Device Type   Category        High Level Cat.   Low Level Cat.   Event Name
-4662   12            Success Audit                                      Success Audit: An operation was performed on an object
-```
+Tra nhiều QID:
 
-If not found:
-
-```bash
-qidlookup qid 99999999
-```
-
-```
-QID 99999999: NOT FOUND
-```
-
-(exit code `1`)
-
-## 6. EID lookup
-
-```bash
-qidlookup eid 4662
-```
-
-```
-EID: 4662
-
-QID       Device Type   Category        High Level Cat.   Low Level Cat.   Event Name
-5000849   12            Success Audit                                      Success Audit: An operation was performed on an object
-```
-
-## 7. Batch lookup
-
-Multiple values on the command line, `--qids`/`--eids` comma lists, or a
-file with one ID per line:
-
-```bash
+```powershell
 qidlookup qid 5000843 5000849 5000850
 qidlookup qid --qids 5000843,5000849,5000850
 qidlookup qid-list qids.txt
+```
+
+Lọc theo Device Type:
+
+```powershell
+qidlookup qid 5000849 --device-type 12
+```
+
+### GUI
+
+1. Mở tab **QID Lookup**.
+2. Nhập một hoặc nhiều QID, phân tách bằng dấu phẩy hoặc xuống dòng.
+3. Nhập **Device Type** nếu muốn thu hẹp kết quả.
+4. Bấm **Lookup QID**.
+
+Nếu QID không tồn tại, GUI sẽ báo không tìm thấy thay vì tự chuyển nó thành EID.
+
+## 2. EID Lookup
+
+Dùng chế độ này khi đầu vào là **Event ID của Windows hoặc vendor/log source**. EID được lưu dưới dạng text nên không bắt buộc chỉ là số.
+
+### CLI
+
+```powershell
+qidlookup eid 4662
+qidlookup eid 7045
+```
+
+Tra nhiều EID:
+
+```powershell
 qidlookup eid 4656 4662 4663
+qidlookup eid --eids 4656,4662,4663
 qidlookup eid-list eids.txt
-qidlookup reverse qids.txt        # alias of qid-list
-qidlookup reverse-eid eids.txt    # alias of eid-list
 ```
 
-```
-QID       EID    High Level Cat.   Low Level Cat.   Event Name
-5000843   4656                                       Success Audit: A handle to an object was requested
-5000849   4662                                       Success Audit: An operation was performed on an object
-5000850   4663                                       Success Audit: An attempt was made to access an object
-```
+Lọc Windows Event ID `7045` theo Device Type `12`:
 
-Not-found entries are shown inline and never abort the batch:
-
-```
-QID       EID          Event Name
-5000849   4662         ...
-9999999   NOT FOUND
+```powershell
+qidlookup eid 7045 --device-type 12
 ```
 
-Exit code reflects the overall outcome: `0` if every value was found, `1`
-if any were not found.
+Trong dataset đầy đủ hiện tại, truy vấn này trả về QID `5001613`.
 
-## 8. Category lookup (High/Low Level Category → QID/EID)
+### GUI
 
-QRadar's Low Level Category names are **not unique** across High Level
-Categories — e.g. "Command Execution Success" exists under both `Audit`
-(Linux) and `System` (Windows). The `category` command looks up by the
-combination, so the two never get confused:
+1. Mở tab **EID Lookup**.
+2. Nhập một hoặc nhiều Event ID.
+3. Nếu cần, nhập Device Type. Ví dụ `12` cho mapping Windows trong dataset hiện tại.
+4. Bấm **Lookup EID**.
 
-```bash
-qidlookup category "Process Creation Success" --hlc System
-qidlookup category "System.Process Creation Success"       # combined form, same result
-qidlookup category "Audit.Command Execution Success"       # disambiguates from System's
+EID có thể trả về nhiều QID. Đây là hành vi bình thường do cùng một Event ID có thể được sử dụng bởi nhiều Device Type.
+
+## 3. High Level/Low Level Category Lookup
+
+Category Lookup tìm tất cả QID/EID thuộc một QRadar category. Chế độ này cần dataset có hai cột:
+
+- `high_level_category`
+- `low_level_category`
+
+Việc so khớp là **chính xác và không phân biệt hoa/thường**. Đây không phải tìm kiếm theo từ khóa.
+
+### CLI
+
+Có ba cách tra category.
+
+Chỉ dùng Low Level Category:
+
+```powershell
+qidlookup category "Command Execution Success"
 ```
 
-```
-High Level Category: System
-Low Level Category: Process Creation Success
+Chỉ dùng High Level Category:
 
-Unique QIDs (2): 5000862, 5001828
-Unique EIDs (2): 1, 4688
-
-QID       EID    Device Type   Event Name
-5000862   4688   12            Process Creation
-5001828   1      15            Process Create
+```powershell
+qidlookup category --hlc Audit
 ```
 
-- Passing just a Low Level Category name (no `--hlc`, no dot) matches that
-  name under **any** High Level Category — fine when the name happens to
-  be unique in your dataset, ambiguous otherwise.
-- The combined `"High Level.Low Level"` form (matching how QRadar displays
-  it) is parsed automatically and is equivalent to passing `--hlc` separately.
-- Matching is **exact** (case-insensitive), not substring — for fuzzy
-  matching, use `search --llc/--hlc` (section 9) instead.
-- Not found → `NOT FOUND`, exit code `1`. Neither a category nor `--hlc`
-  given → exit code `2`.
+Dùng đồng thời High Level và Low Level Category để có kết quả chính xác nhất:
 
-## 9. Search
-
-```bash
-qidlookup search "handle to an object"
-qidlookup search "object" --limit 50
-qidlookup search "object" --device-type 12
-qidlookup search "object" --category "Success Audit"      # raw, per-log-source category
-qidlookup search "process" --hlc System                   # High Level Category filter
-qidlookup search "process" --llc "Process Creation Success"  # Low Level Category filter
+```powershell
+qidlookup category "Command Execution Success" --hlc Audit
 ```
 
-Search is case-insensitive and matches `event_name`, `description`,
-`event_category`, `low_level_category`, and `high_level_category` —
-`--category`/`--llc`/`--hlc` narrow results down with an exact-match filter
-on top of the free-text term.
+Hoặc dùng dạng gộp `High Level.Low Level`:
 
-## 10. Export
-
-```bash
-qidlookup export mappings.csv
-qidlookup export mappings.json
-qidlookup export windows.csv --device-type 12
+```powershell
+qidlookup category "Audit.Command Execution Success"
 ```
 
-Format is inferred from the file extension (`.csv`, `.tsv`, `.json`).
-Export streams from the database and never loads the full table into
-memory, so it scales to 1M+ rows. Existing files are not overwritten unless
-`--force` is passed.
+Hai lệnh cuối cùng là tương đương. Trong dataset hiện tại có `Audit.Command Execution Success`; không có `System.Command Execution Success`.
 
-Other commands also support `--format json|csv|tsv --output file --force`
-for scripting, e.g.:
+> [!NOTE]
+> Một Low Level Category có thể nằm dưới nhiều High Level Category. Nếu chỉ nhập Low Level Category, tool sẽ trả về mapping từ tất cả High Level Category phù hợp. Hãy thêm `--hlc` khi cần phân biệt.
 
-```bash
-qidlookup qid-list qids.txt --format csv --output result.csv
-qidlookup category "System.Process Creation Success" --format json --output result.json
-```
+Không kết hợp cả hai kiểu nhập trong cùng một lệnh. Ví dụ, không dùng `"Audit.Command Execution Success" --hlc Audit`; hãy chọn dạng gộp hoặc `--hlc` riêng.
 
-## 11. Database structure
+### GUI
 
-SQLite, single file (`data/qid_eid.db` by default):
+1. Mở tab **Category Lookup**.
+2. Nhập **Low Level Category**.
+3. Nhập **High Level Category** nếu cần phân biệt.
+4. Có thể nhập thẳng `Audit.Command Execution Success` trong ô Low Level và để trống ô High Level; GUI sẽ tự tách hai phần.
+5. Có thể thêm Device Type để lọc kết quả.
+6. Bấm **Lookup**.
 
-```sql
-CREATE TABLE mappings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    devicetypeid INTEGER,
-    eid TEXT,
-    event_category TEXT,        -- raw, per-log-source category (e.g. "Snort")
-    qid INTEGER,
-    event_name TEXT,
-    description TEXT,
-    severity INTEGER,
-    low_level_category TEXT,    -- QRadar Low Level Category (e.g. "Process Creation Success")
-    high_level_category TEXT    -- QRadar High Level Category (e.g. "System")
-);
+GUI hiển thị toàn bộ mapping và tóm tắt danh sách QID/EID duy nhất.
 
-CREATE INDEX idx_mappings_qid      ON mappings(qid);
-CREATE INDEX idx_mappings_eid      ON mappings(eid);
-CREATE INDEX idx_mappings_device   ON mappings(devicetypeid);
-CREATE INDEX idx_mappings_category ON mappings(event_category);
-CREATE INDEX idx_mappings_llc      ON mappings(low_level_category);
-CREATE INDEX idx_mappings_hlc      ON mappings(high_level_category);
-```
+## Khởi chạy GUI
 
-`event_category` (raw, source-specific) and `low_level_category`/
-`high_level_category` (QRadar's standardized taxonomy) are different
-fields — a base QRadar export only has the former unless it's joined
-against `qidmap`/`category_type` in the source database (see below).
-Databases created before these three columns existed are migrated
-automatically (columns added in place, existing rows untouched) the next
-time the tool opens them — no manual migration step required.
-
-QID↔EID is treated as many-to-many: a QID may appear multiple times (e.g.
-once per device type), and lookups always return the full set of matching
-rows rather than assuming a single answer.
-
-### Getting Low/High Level Category from QRadar
-
-The base CSV export only has 6 columns. To also get `severity` and the
-standardized Low/High Level Category names, dump directly from QRadar's
-Postgres backend (adjust table/column names for your version — verify with
-`\d qidmap` / `\d category_type` first, since internal schema can differ
-between QRadar versions):
-
-```sql
-\copy (
-  SELECT
-    qem.devicetypeid, qem.eid, qem.event_category, qem.qid,
-    qem.event_name, qem.description, qm.severity,
-    hlc.name_i18n_key AS high_level_category,
-    llc.name_i18n_key AS low_level_category
-  FROM qid_eid_mapping qem
-  LEFT JOIN qidmap qm         ON qm.qid = qem.qid
-  LEFT JOIN category_type llc ON qm.lowlevelcategory = llc.id
-  LEFT JOIN category_type hlc ON llc.parent_id = hlc.id
-) TO '/tmp/qid_eid_full_mapping.csv' WITH CSV HEADER
-```
-
-`category_type` is a self-referencing tree: rows with `parent_id IS NULL`
-are High Level Categories, rows with a `parent_id` are Low Level
-Categories whose parent is their High Level Category (despite the column
-being named `name_i18n_key`, some QRadar deployments store the plain
-display text there directly — verify with a sample `SELECT` before
-trusting it blindly). Import the result the same way as any other export:
-
-```bash
-qidlookup import qid_eid_full_mapping.csv --replace
-```
-
-Extra columns (`severity`, `high_level_category`, `low_level_category`)
-are optional — importing an older 6-column CSV still works fine, those
-fields just stay `NULL`.
-
-Inspect or repair:
-
-```bash
-qidlookup stats       # row counts, uniqueness, NULLs, duplicate rows
-qidlookup validate    # schema/index presence + SQLite integrity_check
-```
-
-Database path resolution order: `--database PATH` > `QIDLOOKUP_DATABASE`
-env var > `data/qid_eid.db` (relative to the project root, not the CWD).
-
-## 12. Desktop GUI
-
-For interactive use (no terminal), a Tkinter desktop GUI is included —
-it's a thin presentation layer over the same `core`/`database` modules the
-CLI uses, so results are always identical.
-
-```bash
+```powershell
 qidlookup gui
 ```
 
-or, after `pip install .`:
+Hoặc:
 
-```bash
+```powershell
 qidlookup-gui
 ```
 
-The window has six tabs:
+GUI gồm các tab:
 
-- **QID Lookup** / **EID Lookup** — paste one or many IDs (comma- or
-  newline-separated), optional device-type filter, results in a
-  sortable table, export button (CSV/TSV/JSON).
-- **Category Lookup** — look up by Low Level Category (optionally with a
-  High Level Category to disambiguate). Type the combined
-  `"System.Process Creation Success"` form directly and it auto-splits,
-  same as the CLI. Shows a "Unique QIDs / Unique EIDs" summary plus the
-  full detail table.
-- **Search** — free-text search with device-type/category/LLC/HLC/limit
-  filters.
-- **Import CSV** — browse to a CSV file, toggle `--replace`, see the same
-  import summary (imported/skipped/invalid/duplicated) the CLI prints.
-- **Stats** — database statistics, refreshable.
+- **QID Lookup**
+- **EID Lookup**
+- **Category Lookup**
+- **Search**
+- **Import CSV**
+- **Stats**
 
-The database path shown at the top follows the same resolution as the CLI
-(`QIDLOOKUP_DATABASE` env var, then `data/qid_eid.db`); use **Browse...**
-to point it at a different `.db` file without restarting.
+Đường dẫn database đang dùng được hiển thị ở phía trên. Dùng **Browse...** và **Open** để chọn database khác.
 
-## 13. Development
+## Search
 
-```bash
-pip install -e ".[dev]"
-qidlookup import tests/fixtures/sample_mapping.csv --replace
-qidlookup qid 5000849
+Lệnh `search` dùng khi không biết chính xác QID, EID hoặc category:
+
+```powershell
+qidlookup search "service was installed"
+qidlookup search "command execution"
+qidlookup search "command" --hlc Audit
+qidlookup search "service" --device-type 12 --limit 50
 ```
 
-Style: type hints on public functions, docstrings on public APIs,
-parameterized SQL only, no business logic in the CLI/GUI layers.
+`search` tìm chuỗi con trong `event_name`, `description`, `event_category`, `high_level_category` và `low_level_category`. Các filter `--category`, `--hlc` và `--llc` là filter chính xác.
 
-## 14. Testing
+## Xuất kết quả
 
-```bash
-pytest
-pytest --cov=qidlookup --cov-report=term-missing
+Các lệnh lookup hỗ trợ `human`, `json`, `csv` và `tsv`:
+
+```powershell
+qidlookup eid 7045 --format json
+qidlookup qid 5000849 --format csv --output result.csv
+qidlookup category "Audit.Command Execution Success" --format json --output category.json
 ```
 
-100+ tests covering importer edge cases (empty CSV, invalid QID, missing
-columns, UTF-8, commas in descriptions, duplicates, large files, replace
-safety, rollback, optional severity/LLC/HLC columns), lookup (found/
-not-found/multi-mapping/batch/category disambiguation), search
-(case-insensitivity, partial match, limit, category filters), export
-(CSV/TSV/JSON), repository (indexes, transactions, SQL-injection
-resistance, schema migration), input validation, and full CLI
-integration — at **89% line coverage** (target: ≥85%; the Tkinter GUI is
-excluded from the coverage metric — see `pyproject.toml`'s
-`[tool.coverage.run]` — since it's UI wiring smoke-tested manually, same
-rationale as not unit-testing widget layout).
+Dùng `--force` nếu muốn ghi đè file đã tồn tại.
 
-## 15. Build Windows EXE
+Trong GUI, bấm **Export kết quả...** sau khi lookup.
 
-```bash
-pip install pyinstaller
+## Cấu trúc CSV
+
+Sáu cột bắt buộc:
+
+```text
+devicetypeid,eid,event_category,qid,event_name,description
+```
+
+Các cột tùy chọn:
+
+```text
+severity,high_level_category,low_level_category
+```
+
+Header khuyến nghị cho dataset đầy đủ:
+
+```csv
+devicetypeid,eid,event_category,qid,event_name,description,severity,high_level_category,low_level_category
+```
+
+Nếu CSV không có High/Low Level Category, QID/EID lookup vẫn hoạt động bình thường; chỉ Category Lookup không có dữ liệu để trả về.
+
+Schema nội bộ của QRadar có thể khác nhau giữa các phiên bản. Trước khi export trực tiếp từ PostgreSQL, hãy kiểm tra cấu trúc `qid_eid_mapping`, `qidmap` và `category_type` trên hệ thống của bạn. Mục tiêu là xuất đúng chín cột trong header trên.
+
+## Kiểm tra database
+
+```powershell
+qidlookup stats
+qidlookup validate
+```
+
+- `stats`: số mapping, QID/EID duy nhất, Device Type, category và dữ liệu thiếu.
+- `validate`: kiểm tra schema, index và tính toàn vẹn SQLite.
+
+## Exit code CLI
+
+| Exit code | Ý nghĩa |
+|---|---|
+| `0` | Tìm thấy tất cả giá trị yêu cầu |
+| `1` | Có ít nhất một giá trị không tìm thấy |
+| `2` | Input hoặc option không hợp lệ |
+| `3` | Lỗi database hoặc hệ thống |
+
+## Xử lý sự cố
+
+| Hiện tượng | Cách xử lý |
+|---|---|
+| Nhập `7045` trong QID Lookup nhưng không có kết quả | `7045` là EID; chuyển sang EID Lookup. |
+| Một EID trả về nhiều QID | Lọc thêm Device Type; đây là quan hệ many-to-many bình thường. |
+| Category Lookup không có kết quả | Kiểm tra CSV/database có `high_level_category` và `low_level_category` hay không. |
+| `System.Command Execution Success` không tìm thấy | Dataset hiện tại chỉ có `Audit.Command Execution Success`. |
+| Cùng LLC trả về nhiều nhóm | Thêm HLC bằng `--hlc` hoặc dạng `HLC.LLC`. |
+| `qidlookup: command not found` | Dùng `python -m qidlookup ...` hoặc thêm Python Scripts vào `PATH`. |
+| Database không đúng | Kiểm tra đường dẫn ở thanh trên GUI hoặc dùng `--database PATH` trong CLI. |
+| File output đã tồn tại | Thêm `--force` hoặc chọn tên file khác. |
+
+## Phát triển và test
+
+```powershell
+python -m pip install -e ".[dev]"
+python -m pytest
+python -m pytest --cov=qidlookup --cov-report=term-missing
+```
+
+Kiến trúc chính:
+
+```text
+CSV -> importer -> SQLite repository -> lookup/search services -> CLI hoặc GUI
+```
+
+- `src/qidlookup/core`: logic lookup và search.
+- `src/qidlookup/database`: kết nối, schema và truy vấn SQLite.
+- `src/qidlookup/cli`: giao diện dòng lệnh.
+- `src/qidlookup/gui`: giao diện Tkinter.
+- `src/qidlookup/importers` và `exporters`: import/export dữ liệu.
+- `tests`: test cho importer, repository, lookup, search, formatting và CLI.
+
+## Build Windows executable
+
+```powershell
+python -m pip install pyinstaller
 pyinstaller --onefile --name qidlookup src/qidlookup/__main__.py
-```
-
-For the GUI, build a windowed executable (`--windowed` suppresses the
-console window since it's not needed for a GUI app):
-
-```bash
 pyinstaller --onefile --windowed --name qidlookup-gui src/qidlookup/gui/app.py
 ```
 
-Both resolve their database path the same way as running from source
-(`--database`, then `QIDLOOKUP_DATABASE`, then a default next to the
-executable) — no absolute paths are hard-coded. To keep the database
-alongside the executable:
+Database không được nhúng tự động vào executable. Hãy để file `.db` bên cạnh executable hoặc chọn nó qua GUI/`--database`.
 
-```bash
-dist\qidlookup.exe --database .\qid_eid.db import qid_eid_mapping.csv --replace
-dist\qidlookup.exe --database .\qid_eid.db qid 5000849
-dist\qidlookup-gui.exe
-```
+## License
 
-## 16. Updating the dataset
-
-```
-QRadar → export → qid_eid_mapping.csv → qidlookup import --replace → SQLite → Lookup Tool
-```
-
-```bash
-qidlookup import new_qid_eid_mapping.csv --replace
-```
-
-`--replace` builds the new dataset in a temporary file and only swaps it
-in atomically after the import fully succeeds. If the import fails for any
-reason (bad header, disk error, etc.), the existing database is left
-completely untouched.
-
-## 17. Troubleshooting
-
-| Symptom | Cause / fix |
-|---|---|
-| `Error: QID must be an integer.` | A non-numeric value was passed to `qid`/`--qids`. |
-| `Error: CSV header is missing required column(s): ...` | The CSV doesn't match the QRadar export schema (`devicetypeid,eid,event_category,qid,event_name,description`). |
-| `Error: Output file already exists: ... (use --force to overwrite)` | Pass `--force` to overwrite, or choose a different `--output` path. |
-| `Error: Provide a Low Level Category and/or --hlc.` | `category` needs at least one of the positional argument or `--hlc`. |
-| `category`/`search --llc`/`--hlc` returns nothing but data looks right | The imported CSV didn't have `low_level_category`/`high_level_category` columns — check with `qidlookup stats` (or re-import a CSV that has them, see section 11). |
-| Same Low Level Category name returns mappings from the wrong OS/vendor | Disambiguate with `--hlc` or the combined `"High Level.Low Level"` form (section 8). |
-| `Database validation FAILED` | Run `qidlookup validate` for details; if indexes are missing, re-import with `--replace` to rebuild them. |
-| Exit code `1` on lookup | Normal — it means at least one requested QID/EID/category was not found; check output for `NOT FOUND` entries. |
-| Exit code `3` | Database/system-level error (e.g. unreadable/corrupt `.db` file). |
-| `qidlookup: command not found` (PowerShell) | The Python Scripts folder isn't on PATH — use `python -m qidlookup ...` instead, or add the Scripts folder to PATH. |
-
-## Future extension points
-
-The current schema mirrors QRadar's QID/EID/category export, but nothing in
-`core/` or the CLI/GUI assumes "Windows" or "QRadar" specifically:
-
-- `devicetypeid`/`eid` generalize to `log_source_type`/`event_id`; `low_level_category`/
-  `high_level_category` generalize to any vendor's severity/category taxonomy.
-- Additional sources (Splunk, Elastic, Sigma) can be normalized into the
-  same `Mapping` shape and imported through a new module under
-  `importers/` without touching `core/lookup.py`, `core/search.py`, or
-  either front-end.
-- The repository layer (`database/repository.py`) is the only place aware
-  of SQLite; a PostgreSQL-backed repository could implement the same
-  method surface (`find_by_qid`, `find_by_eid`, `find_by_category`,
-  `search`, `iter_all`, ...) as a drop-in replacement.
+MIT License. Xem [LICENSE](LICENSE).
