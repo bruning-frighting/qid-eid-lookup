@@ -8,6 +8,5 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
-data/qid_eid.db
 data/*.db-journal
 *.spec

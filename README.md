@@ -10,31 +10,36 @@ All lookups use a local SQLite database. No QRadar connection is required after 
 
 ## Install
 
-Requires Python 3.9 or newer.
+Requires Python 3.9 or newer and [Git LFS](https://git-lfs.com/).
 
 ```powershell
+git lfs install
 git clone https://github.com/bruning-frighting/qid-eid-lookup.git
 cd qid-eid-lookup
-python -m pip install .
+git lfs pull
+python -m pip install -e .
 ```
 
 If `qidlookup` is not available in your `PATH`, use `python -m qidlookup` instead.
 
-## Import data
+## Default database and custom data
 
-The generated database is not included in the repository. Import a CSV before using the tool:
-
-```powershell
-qidlookup import path/to/qid_eid_mapping.csv --replace
-```
-
-To try the included sample data:
+The repository includes a ready-to-use default database at `data/qid_eid.db`. It is stored with Git LFS because the file is about 271 MB. After cloning, you can start looking up data immediately:
 
 ```powershell
-qidlookup import data/raw/qid_eid_mapping.csv --replace
+qidlookup stats
+qidlookup eid 7045 --device-type 12
 ```
 
-The sample supports QID and EID lookup only. Category lookup requires a CSV containing `high_level_category` and `low_level_category`.
+If you have a custom QRadar CSV, replace the default database with:
+
+```powershell
+qidlookup import path/to/custom_qid_eid_mapping.csv --replace
+```
+
+`--replace` builds the new database safely and swaps it in only after the import succeeds. Keep a copy of the original database if you want to restore it later, or run `git lfs pull` again after deleting the custom database.
+
+Category lookup requires a CSV containing `high_level_category` and `low_level_category`.
 
 ## 1. QID lookup
 
@@ -169,6 +174,7 @@ qidlookup validate
 | Category Lookup returns nothing | Import a CSV with `high_level_category` and `low_level_category`. |
 | `qidlookup` is not recognized | Use `python -m qidlookup`. |
 | The wrong database is open | Check the GUI database path or use `--database PATH`. |
+| `data/qid_eid.db` is only a small text pointer | Install Git LFS and run `git lfs pull`. |
 
 ## Test
 
