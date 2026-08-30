@@ -50,6 +50,8 @@ qidlookup qid 5000849
 qidlookup qid 5000843 5000849 5000850
 ```
 
+![QRadar QID Lookup CLI](assets/CLI_Qradar.PNG)
+
 In the GUI, open **QID Lookup**, enter one or more QIDs, and click **Lookup QID**.
 
 ## 2. EID lookup
