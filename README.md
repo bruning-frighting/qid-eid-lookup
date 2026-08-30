@@ -25,7 +25,6 @@ All examples below use `python -m qidlookup`, so no Python Scripts `PATH` setup 
 The repository includes a ready-to-use default database at `data/qid_eid.db`. After cloning, you can start looking up data immediately:
 
 ```powershell
-python -m qidlookup stats
 python -m qidlookup eid 7045
 ```
 
@@ -158,12 +157,10 @@ eid,event_category,qid,event_name,description,severity,high_level_category,low_l
 
 ```powershell
 python -m qidlookup search "service was installed"
-python -m qidlookup stats
 python -m qidlookup validate
 ```
 
 - `search` finds text in event names, descriptions, and categories.
-- `stats` shows database counts and missing data.
 - `validate` checks the SQLite schema, indexes, and integrity.
 
 ## Test
