@@ -1,5 +1,0 @@
-devicetypeid,eid,event_category,qid,event_name,description
-12,4662,Success Audit,5000849,Success Audit: An operation was performed on an object,Success Audit: An operation was performed on an object.
-12,4663,Success Audit,5000850,Success Audit: An attempt was made to access an object,Success Audit: An attempt was made to access an object.
-12,4656,Success Audit,5000843,Success Audit: A handle to an object was requested,Success Audit: A handle to an object was requested.
-12,4688,Process Tracking,5000001,A new process has been created,A new process has been created.
