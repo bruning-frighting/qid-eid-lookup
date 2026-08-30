@@ -312,11 +312,20 @@ class QidLookupApp(tk.Tk):
         result_frame, tree = self._build_results_table(frame)
 
         status_var = tk.StringVar()
-        state: dict = {"last_mappings": []}
+        state: dict = {"raw_mappings": [], "filtered_mappings": [], "num_ids": 0, "not_found": []}
 
         def apply_filter(*args):
-            if state.get("last_mappings"):
-                self._populate_table(tree, state["last_mappings"])
+            if not state["raw_mappings"] and state["num_ids"] == 0:
+                return
+            filtered = self._filter_mappings(state["raw_mappings"])
+            state["filtered_mappings"] = filtered
+            self._populate_table(tree, filtered)
+            
+            summary = f"{len(filtered)} mapping tìm thấy cho {state['num_ids']} {id_label} đã nhập."
+            if state["not_found"]:
+                preview = ", ".join(state["not_found"][:10]) + ("..." if len(state["not_found"]) > 10 else "")
+                summary += f"  Không tìm thấy ({len(state['not_found'])}): {preview}"
+            status_var.set(summary)
         self.bind("<<FilterChanged>>", apply_filter, add="+")
 
         def do_lookup() -> None:
@@ -325,7 +334,7 @@ class QidLookupApp(tk.Tk):
                 return
 
             raw_text = text_input.get("1.0", "end")
-            raw_values = [v.strip() for v in raw_text.replace(",", "\n").splitlines() if v.strip()]
+            raw_values = [v.strip() for v in raw_text.replace(",", "\\n").splitlines() if v.strip()]
             if not raw_values:
                 messagebox.showwarning("Input", f"Nhập ít nhất một {id_label}.")
                 return
@@ -342,26 +351,25 @@ class QidLookupApp(tk.Tk):
 
             flat = [m for ms in results.values() for m in ms]
             not_found = [str(k) for k, ms in results.items() if not ms]
-            self._populate_table(tree, flat)
-            state["last_mappings"] = flat
-
-            summary = f"{len(flat)} mapping tìm thấy cho {len(results)} {id_label} đã nhập."
-            if not_found:
-                preview = ", ".join(not_found[:10]) + ("..." if len(not_found) > 10 else "")
-                summary += f"  Không tìm thấy ({len(not_found)}): {preview}"
-            status_var.set(summary)
+            state["raw_mappings"] = flat
+            state["num_ids"] = len(results)
+            state["not_found"] = not_found
+            apply_filter()
 
         def do_clear() -> None:
             text_input.delete("1.0", "end")
             tree.delete(*tree.get_children())
-            state["last_mappings"] = []
+            state["raw_mappings"] = []
+            state["filtered_mappings"] = []
+            state["num_ids"] = 0
+            state["not_found"] = []
             status_var.set("")
 
         btns = ttk.Frame(top)
         btns.pack(fill="x", pady=4)
         ttk.Button(btns, text=f"Lookup {id_label}", command=do_lookup).pack(side="left")
         ttk.Button(
-            btns, text="Export kết quả...", command=lambda: self._export_mappings(state["last_mappings"])
+            btns, text="Export kết quả...", command=lambda: self._export_mappings(state["filtered_mappings"])
         ).pack(side="left", padx=4)
         ttk.Button(btns, text="Xóa", command=do_clear).pack(side="left")
 
@@ -396,11 +404,27 @@ class QidLookupApp(tk.Tk):
         ttk.Entry(opts, textvariable=hlc_var, width=24).pack(side="left", padx=4)
         result_frame, tree = self._build_results_table(frame)
         status_var = tk.StringVar()
-        state: dict = {"last_mappings": []}
+        state: dict = {"raw_mappings": [], "filtered_mappings": [], "searched": False}
 
         def apply_filter(*args):
-            if state.get("last_mappings"):
-                self._populate_table(tree, state["last_mappings"])
+            if not state["searched"]:
+                return
+            filtered = self._filter_mappings(state["raw_mappings"])
+            state["filtered_mappings"] = filtered
+            self._populate_table(tree, filtered)
+            
+            if not filtered:
+                if state["raw_mappings"]:
+                    status_var.set("0 kết quả sau khi lọc.")
+                else:
+                    status_var.set("NOT FOUND")
+            else:
+                unique_qids = sorted({m.qid for m in filtered if m.qid is not None})
+                unique_eids = sorted({m.eid for m in filtered if m.eid})
+                status_var.set(
+                    f"Unique QIDs ({len(unique_qids)}): {', '.join(str(q) for q in unique_qids)}"
+                    f"   |   Unique EIDs ({len(unique_eids)}): {', '.join(unique_eids)}"
+                )
         self.bind("<<FilterChanged>>", apply_filter, add="+")
 
         def do_lookup() -> None:
@@ -423,18 +447,9 @@ class QidLookupApp(tk.Tk):
             results = LookupService(repo).lookup_by_category(
                 low_level_category=llc, high_level_category=hlc
             )
-            self._populate_table(tree, results)
-            state["last_mappings"] = results
-
-            if not results:
-                status_var.set("NOT FOUND")
-            else:
-                unique_qids = sorted({m.qid for m in results if m.qid is not None})
-                unique_eids = sorted({m.eid for m in results if m.eid})
-                status_var.set(
-                    f"Unique QIDs ({len(unique_qids)}): {', '.join(str(q) for q in unique_qids)}"
-                    f"   |   Unique EIDs ({len(unique_eids)}): {', '.join(unique_eids)}"
-                )
+            state["raw_mappings"] = results
+            state["searched"] = True
+            apply_filter()
 
         llc_entry.bind("<Return>", lambda _event: do_lookup())
 
@@ -442,7 +457,7 @@ class QidLookupApp(tk.Tk):
         btns.pack(fill="x", pady=4)
         ttk.Button(btns, text="Lookup", command=do_lookup).pack(side="left")
         ttk.Button(
-            btns, text="Export kết quả...", command=lambda: self._export_mappings(state["last_mappings"])
+            btns, text="Export kết quả...", command=lambda: self._export_mappings(state["filtered_mappings"])
         ).pack(side="left", padx=4)
 
         result_frame.pack(fill="both", expand=True, padx=8, pady=6)
@@ -488,50 +503,60 @@ class QidLookupApp(tk.Tk):
 
         result_frame, tree = self._build_results_table(frame)
         status_var = tk.StringVar()
-        state: dict = {"last_mappings": []}
+        state: dict = {"raw_mappings": [], "filtered_mappings": [], "searched": False}
 
         def apply_filter(*args):
-            if state.get("last_mappings"):
-                self._populate_table(tree, state["last_mappings"])
+            if not state["searched"]:
+                return
+            filtered = self._filter_mappings(state["raw_mappings"])
+            state["filtered_mappings"] = filtered
+            self._populate_table(tree, filtered)
+            
+            if not filtered:
+                if state["raw_mappings"]:
+                    status_var.set("0 kết quả sau khi lọc.")
+                else:
+                    status_var.set("NOT FOUND")
+            else:
+                unique_qids = sorted({m.qid for m in filtered if m.qid is not None})
+                unique_eids = sorted({m.eid for m in filtered if m.eid})
+                status_var.set(
+                    f"Unique QIDs ({len(unique_qids)}): {', '.join(str(q) for q in unique_qids)}"
+                    f"   |   Unique EIDs ({len(unique_eids)}): {', '.join(unique_eids)}"
+                )
         self.bind("<<FilterChanged>>", apply_filter, add="+")
 
-        def do_search() -> None:
+        def do_lookup() -> None:
             repo = self._require_repo()
             if repo is None:
                 return
 
-            term = term_var.get().strip()
-            if not term:
-                messagebox.showwarning("Input", "Nhập từ khóa tìm kiếm.")
+            llc = llc_var.get().strip() or None
+            hlc = hlc_var.get().strip() or None
+            if hlc is None and llc:
+                auto_hlc, auto_llc = split_category_arg(llc)
+                if auto_hlc is not None:
+                    hlc, llc = auto_hlc, auto_llc
+            if not llc and not hlc:
+                messagebox.showwarning(
+                    "Input", "Nhập Low Level Category và/hoặc High Level Category."
+                )
                 return
 
-            try:
-                limit = int(limit_var.get()) if limit_var.get().strip() else 100
-            except ValueError as exc:
-                messagebox.showerror("Input Error", str(exc))
-                return
-
-            category = category_var.get().strip() or None
-            high_level_category = hlc_var.get().strip() or None
-            low_level_category = llc_var.get().strip() or None
-            results = SearchService(repo).search(
-                term,
-                category=category,
-                low_level_category=low_level_category,
-                high_level_category=high_level_category,
-                limit=limit,
+            results = LookupService(repo).lookup_by_category(
+                low_level_category=llc, high_level_category=hlc
             )
-            self._populate_table(tree, results)
-            state["last_mappings"] = results
-            status_var.set(f"Tìm thấy {len(results)} kết quả (limit={limit}).")
+            state["raw_mappings"] = results
+            state["searched"] = True
+            apply_filter()
 
         term_entry.bind("<Return>", lambda _event: do_search())
 
         btns = ttk.Frame(top)
         btns.pack(fill="x", pady=4)
-        ttk.Button(btns, text="Search", command=do_search).pack(side="left")
+        ttk.Button(btns, text="Lookup", command=do_lookup).pack(side="left")
         ttk.Button(
-            btns, text="Export kết quả...", command=lambda: self._export_mappings(state["last_mappings"])
+            btns, text="Export kết quả...", command=lambda: self._export_mappings(state["filtered_mappings"])
         ).pack(side="left", padx=4)
 
         result_frame.pack(fill="both", expand=True, padx=8, pady=6)
