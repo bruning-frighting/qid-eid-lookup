@@ -18,21 +18,21 @@ cd qid-eid-lookup
 python -m pip install -e .
 ```
 
-If `qidlookup` is not available in your `PATH`, use `python -m qidlookup` instead.
+All examples below use `python -m qidlookup`, so no Python Scripts `PATH` setup is required.
 
 ## Default database and custom data
 
 The repository includes a ready-to-use default database at `data/qid_eid.db`. After cloning, you can start looking up data immediately:
 
 ```powershell
-qidlookup stats
-qidlookup eid 7045
+python -m qidlookup stats
+python -m qidlookup eid 7045
 ```
 
 If you have a custom QRadar CSV, replace the default database with:
 
 ```powershell
-qidlookup import path/to/custom_qid_eid_mapping.csv --replace
+python -m qidlookup import path/to/custom_qid_eid_mapping.csv --replace
 ```
 
 `--replace` builds the new database safely and swaps it in only after the import succeeds. Keep a copy of the original database if you want to restore it later.
@@ -44,8 +44,8 @@ Category lookup requires a CSV containing `high_level_category` and `low_level_c
 Use this mode when you already know the **QRadar QID**.
 
 ```powershell
-qidlookup qid 5000849
-qidlookup qid 5000843 5000849 5000850
+python -m qidlookup qid 5000849
+python -m qidlookup qid 5000843 5000849 5000850
 ```
 
 ![QRadar QID Lookup CLI](assets/CLI_Qradar.PNG)
@@ -57,8 +57,8 @@ In the GUI, open **QID Lookup**, enter one or more QIDs, and click **Lookup QID*
 Use this mode for a Windows Event ID or another vendor **Event ID**.
 
 ```powershell
-qidlookup eid 4662
-qidlookup eid 7045
+python -m qidlookup eid 4662
+python -m qidlookup eid 7045
 ```
 
 In the GUI, open **EID Lookup**, enter one or more Event IDs, and click **Lookup EID**.
@@ -74,25 +74,25 @@ Category matching is exact and case-insensitive.
 Look up a Low Level Category:
 
 ```powershell
-qidlookup category "Command Execution Success"
+python -m qidlookup category "Command Execution Success"
 ```
 
 Look up a High Level Category:
 
 ```powershell
-qidlookup category --hlc Audit
+python -m qidlookup category --hlc Audit
 ```
 
 Use both levels for a more precise result:
 
 ```powershell
-qidlookup category "Command Execution Success" --hlc Audit
+python -m qidlookup category "Command Execution Success" --hlc Audit
 ```
 
 The combined `High Level.Low Level` form is equivalent:
 
 ```powershell
-qidlookup category "Audit.Command Execution Success"
+python -m qidlookup category "Audit.Command Execution Success"
 ```
 
 In the current full dataset, `Audit.Command Execution Success` exists, while `System.Command Execution Success` does not.
@@ -107,7 +107,7 @@ Do not use the combined form and a separate High Level value at the same time.
 ## Start the GUI
 
 ```powershell
-qidlookup gui
+python -m qidlookup gui
 ```
 
 or:
@@ -125,16 +125,16 @@ Use **Browse...** and **Open** at the top of the window to select another SQLite
 Lookup commands support human-readable, JSON, CSV, and TSV output:
 
 ```powershell
-qidlookup eid 7045 --format json
-qidlookup qid 5000849 --format csv --output result.csv
-qidlookup category "Audit.Command Execution Success" --format json
+python -m qidlookup eid 7045 --format json
+python -m qidlookup qid 5000849 --format csv --output result.csv
+python -m qidlookup category "Audit.Command Execution Success" --format json
 ```
 
 For files containing one ID per line:
 
 ```powershell
-qidlookup qid-list qids.txt
-qidlookup eid-list eids.txt
+python -m qidlookup qid-list qids.txt
+python -m qidlookup eid-list eids.txt
 ```
 
 ## CSV format
@@ -145,20 +145,21 @@ Required columns:
 eid,event_category,qid,event_name,description
 ```
 
-Optional columns:
+Full format for Category Lookup:
 
-```text
-severity,high_level_category,low_level_category
+```csv
+eid,event_category,qid,event_name,description,severity,high_level_category,low_level_category
+4688,Success Audit,5000862,A new process has been created,Windows process creation event,5,System,Process Creation Success
 ```
 
-Without the two category columns, QID and EID lookup still work, but Category Lookup returns no results.
+`severity`, `high_level_category`, and `low_level_category` are optional. Without the two category columns, QID and EID lookup still work, but Category Lookup returns no results.
 
 ## Useful commands
 
 ```powershell
-qidlookup search "service was installed"
-qidlookup stats
-qidlookup validate
+python -m qidlookup search "service was installed"
+python -m qidlookup stats
+python -m qidlookup validate
 ```
 
 - `search` finds text in event names, descriptions, and categories.
