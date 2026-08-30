@@ -10,13 +10,11 @@ All lookups use a local SQLite database. No QRadar connection is required after 
 
 ## Install
 
-Requires Python 3.9 or newer and [Git LFS](https://git-lfs.com/).
+Requires Python 3.9 or newer.
 
 ```powershell
-git lfs install
 git clone https://github.com/bruning-frighting/qid-eid-lookup.git
 cd qid-eid-lookup
-git lfs pull
 python -m pip install -e .
 ```
 
@@ -24,7 +22,7 @@ If `qidlookup` is not available in your `PATH`, use `python -m qidlookup` instea
 
 ## Default database and custom data
 
-The repository includes a ready-to-use default database at `data/qid_eid.db`. It is stored with Git LFS because the file is about 271 MB. After cloning, you can start looking up data immediately:
+The repository includes a ready-to-use default database at `data/qid_eid.db`. After cloning, you can start looking up data immediately:
 
 ```powershell
 qidlookup stats
@@ -37,7 +35,7 @@ If you have a custom QRadar CSV, replace the default database with:
 qidlookup import path/to/custom_qid_eid_mapping.csv --replace
 ```
 
-`--replace` builds the new database safely and swaps it in only after the import succeeds. Keep a copy of the original database if you want to restore it later, or run `git lfs pull` again after deleting the custom database.
+`--replace` builds the new database safely and swaps it in only after the import succeeds. Keep a copy of the original database if you want to restore it later.
 
 Category lookup requires a CSV containing `high_level_category` and `low_level_category`.
 
