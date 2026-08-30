@@ -50,7 +50,7 @@ _HEADINGS = {
     "event_name": "Event Name",
     "description": "Description",
 }
-_WIDTHS = {"qid": 90, "eid": 90, "severity": 60}
+_WIDTHS = {"qid": 100, "eid": 160, "severity": 70}
 
 
 class QidLookupApp(tk.Tk):
@@ -150,7 +150,8 @@ class QidLookupApp(tk.Tk):
         tree = ttk.Treeview(frame, columns=_COLUMNS, show="headings", height=16)
         for col in _COLUMNS:
             tree.heading(col, text=_HEADINGS[col])
-            tree.column(col, width=_WIDTHS.get(col, 220), anchor="w")
+            width = _WIDTHS.get(col, 220)
+            tree.column(col, width=width, minwidth=width, stretch=False, anchor="w")
         vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
