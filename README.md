@@ -118,6 +118,8 @@ qidlookup-gui
 
 Use **Browse...** and **Open** at the top of the window to select another SQLite database.
 
+![QRadar QID/EID Lookup GUI](assets/GUI_Qradar.PNG)
+
 ## Output and batch lookup
 
 Lookup commands support human-readable, JSON, CSV, and TSV output:
