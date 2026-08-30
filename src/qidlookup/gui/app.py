@@ -232,7 +232,7 @@ class QidLookupApp(tk.Tk):
         show_linux = self.show_linux_var.get()
         show_other = self.show_other_var.get()
 
-        WINDOWS_IDS = {12, 13, 97, 98, 99, 101, 191, 209, 219, 253, 260, 338, 384, 397, 413, 433, 443, 445, 452, 544}
+        WINDOWS_IDS = {12}
         LINUX_IDS = {11, 14, 58, 140, 180, 504, 518, 537}
 
         filtered = []
@@ -356,7 +356,7 @@ class QidLookupApp(tk.Tk):
                 return
 
             raw_text = text_input.get("1.0", "end")
-            raw_values = [v.strip() for v in raw_text.replace(",", "\\n").splitlines() if v.strip()]
+            raw_values = [v.strip() for v in raw_text.replace(",", "\n").splitlines() if v.strip()]
             if not raw_values:
                 messagebox.showwarning("Input", f"Nhập ít nhất một {id_label}.")
                 return
