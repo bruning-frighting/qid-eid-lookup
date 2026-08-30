@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qidlookup"
+version = "1.0.0"
+description = "Offline QID <-> EID lookup tool for QRadar mapping data"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Detection Engineering" }]
+dependencies = [
+    "typer>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+qidlookup = "qidlookup.cli.commands:app"
+qidlookup-gui = "qidlookup.gui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+# gui/app.py is a Tkinter presentation layer (widget wiring only, no
+# business logic) and __main__.py is a one-line entry-point shim; both are
+# smoke-tested manually rather than via pytest, same rationale as not unit
+# testing cli argument-parsing glue beyond the CliRunner integration tests.
+omit = [
+    "*/qidlookup/gui/*",
+    "*/qidlookup/__main__.py",
+]
