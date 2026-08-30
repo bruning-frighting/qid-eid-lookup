@@ -226,26 +226,48 @@ class QidLookupApp(tk.Tk):
         popup.grab_set()
         popup.focus_set()
 
-    def _populate_table(self, tree: ttk.Treeview, mappings: list[Mapping]) -> None:
-        tree.delete(*tree.get_children())
+    def _filter_mappings(self, mappings: list[Mapping]) -> list[Mapping]:
         show_win = self.show_windows_var.get()
         show_sysmon = self.show_sysmon_var.get()
         show_linux = self.show_linux_var.get()
         show_other = self.show_other_var.get()
 
+        WINDOWS_IDS = {12, 13, 97, 98, 99, 101, 191, 209, 219, 253, 260, 338, 384, 397, 413, 433, 443, 445, 452, 544}
+        LINUX_IDS = {11, 14, 58, 140, 180, 504, 518, 537}
+
+        filtered = []
         for m in mappings:
             cat = (m.event_category or "").lower()
             name = (m.event_name or "").lower()
             
-            if "sysmon" in cat or "sysmon" in name:
+            # Sysmon is a special case: devicetypeid is 12 (Windows) but we want to isolate it
+            is_sysmon = "sysmon" in cat or "sysmon" in name
+            
+            is_windows = m.devicetypeid in WINDOWS_IDS
+            is_linux = m.devicetypeid in LINUX_IDS
+            
+            # Fallback for data imported without devicetypeid (e.g. older CSVs)
+            if m.devicetypeid is None:
+                if "linux" in cat or "linux" in name:
+                    is_linux = True
+                elif "windows" in cat or "windows" in name:
+                    is_windows = True
+
+            if is_sysmon:
                 if not show_sysmon: continue
-            elif "linux" in cat or "linux" in name:
+            elif is_linux:
                 if not show_linux: continue
-            elif "windows" in cat or "windows" in name:
+            elif is_windows:
                 if not show_win: continue
             else:
                 if not show_other: continue
+                
+            filtered.append(m)
+        return filtered
 
+    def _populate_table(self, tree: ttk.Treeview, mappings: list[Mapping]) -> None:
+        tree.delete(*tree.get_children())
+        for m in mappings:
             tree.insert(
                 "",
                 "end",
